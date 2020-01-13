@@ -91,6 +91,11 @@ def build_model(training=True):
     forward_deepnovo = forward_deepnovo.to(device)
     if config.use_lstm:
         init_net = init_net.to(device)
+    if not training:
+        forward_deepnovo.eval()
+        backward_deepnovo.eval()
+        if config.use_lstm:
+            init_net.eval()
     return forward_deepnovo, backward_deepnovo, init_net
 
 

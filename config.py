@@ -20,12 +20,14 @@ parser.add_argument("--search_denovo", dest="search_denovo", action="store_true"
 parser.add_argument("--search_db", dest="search_db", action="store_true")
 parser.add_argument("--valid", dest="valid", action="store_true")
 parser.add_argument("--test", dest="test", action="store_true")
+parser.add_argument("--serialize_model", dest="serialize_model", action="store_true")
 
 parser.set_defaults(train=False)
 parser.set_defaults(search_denovo=False)
 parser.set_defaults(search_db=False)
 parser.set_defaults(valid=False)
 parser.set_defaults(test=False)
+parser.set_defaults(serialize_model=False)
 
 args = parser.parse_args()
 

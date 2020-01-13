@@ -1,3 +1,4 @@
+import os
 import torch
 import subprocess
 import logging
@@ -7,7 +8,7 @@ from train_func import train, build_model, validation, perplexity
 from data_reader import DeepNovoDenovoDataset, collate_func, DeepNovoTrainDataset, DBSearchDataset
 from db_searcher import DataBaseSearcher
 from psm_ranker import PSMRank
-from model import InferenceModelWrapper
+from model import InferenceModelWrapper, device
 from denovo import IonCNNDenovo
 import time
 from writer import DenovoWriter, PercolatorWriter
@@ -86,6 +87,29 @@ def main():
         with open(f"{config.db_output_file}" + '.psms', "w") as fw:
             subprocess.run(["percolator", "-X", "/tmp/pout.xml", f"{config.db_output_file}"],
                            stdout=fw)
+
+    elif config.FLAGS.serialize_model:
+        logger.info("serialize the trained model into a distributable format")
+        assert config.use_lstm == False
+        forward_deepnovo, backward_deepnovo, init_net = build_model(training=False)
+
+        # create fake inputs
+        with torch.no_grad():
+            fake_input_ones = (torch.ones((1, 1, config.vocab_size, config.num_ion)).float().to(device),
+                               torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                               torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                               )
+            forward_output = forward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
+            backward_output = backward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
+            logger.info(f"forward output:\n{forward_output}")
+            logger.info(f"backward output:\n{backward_output}")
+
+        forward_script_model = torch.jit.script(forward_deepnovo)
+        backward_script_model = torch.jit.script(backward_deepnovo)
+        if not os.path.exists(os.path.join(config.train_dir, "dist")):
+            os.mkdir(os.path.join(config.train_dir, "dist"))
+            forward_script_model.save(os.path.join(config.train_dir, "dist", "forward_scripted.pt"))
+            backward_script_model.save(os.path.join(config.train_dir, "dist", "backward_scripted.pt"))
 
     else:
         raise RuntimeError("unspecified mode")

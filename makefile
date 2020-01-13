@@ -26,3 +26,7 @@ test:
 .PHONY: db
 db:
 	python main.py --search_db
+
+.PHONY: serialize
+serialize:
+	python main.py --serialize_model

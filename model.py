@@ -47,7 +47,6 @@ class TNet(nn.Module):
         x = activation_func(self.bn2(self.conv2(x)))
         x = activation_func(self.bn3(self.conv3(x)))
         x, _ = torch.max(x, dim=2)  # global max pooling
-        assert x.size(1) == 4*num_units
 
         x = activation_func(self.bn4(self.fc1(x)))
         x = activation_func(self.bn5(self.fc2(x)))
@@ -73,7 +72,7 @@ class DeepNovoPointNet(nn.Module):
         """
 
         N = peaks_location.size(1)
-        assert N == peaks_intensity.size(1), f"location dim 1 of size: {N} but intensity dim 1 of size {peaks_intensity.size(1)}"
+        # assert N == peaks_intensity.size(1), f"location dim 1 of size: {N} but intensity dim 1 of size {peaks_intensity.size(1)}"
         batch_size, T, vocab_size, num_ion = location_index.size()
 
         peaks_location = peaks_location.view(batch_size, 1, N, 1)
