@@ -89,9 +89,13 @@ def main():
                            stdout=fw)
 
     elif config.FLAGS.serialize_model:
+        device = torch.device("cpu")
         logger.info("serialize the trained model into a distributable format")
         assert config.use_lstm == False
         forward_deepnovo, backward_deepnovo, init_net = build_model(training=False)
+
+        forward_deepnovo = forward_deepnovo.to(device)
+        backward_deepnovo = backward_deepnovo.to(device)
 
         # create fake inputs
         with torch.no_grad():
@@ -100,16 +104,18 @@ def main():
                                torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
                                )
             forward_output = forward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
+            forward_script_model = torch.jit.trace(forward_deepnovo, fake_input_ones)
             backward_output = backward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
+            backward_script_model = torch.jit.trace(backward_deepnovo, fake_input_ones)
             logger.info(f"forward output:\n{forward_output}")
             logger.info(f"backward output:\n{backward_output}")
 
-        forward_script_model = torch.jit.script(forward_deepnovo)
-        backward_script_model = torch.jit.script(backward_deepnovo)
+        # forward_script_model = torch.jit.script(forward_deepnovo)
+        # backward_script_model = torch.jit.script(backward_deepnovo)
         if not os.path.exists(os.path.join(config.train_dir, "dist")):
             os.mkdir(os.path.join(config.train_dir, "dist"))
-            forward_script_model.save(os.path.join(config.train_dir, "dist", "forward_scripted.pt"))
-            backward_script_model.save(os.path.join(config.train_dir, "dist", "backward_scripted.pt"))
+        forward_script_model.save(os.path.join(config.train_dir, "dist", "forward_scripted.pt"))
+        backward_script_model.save(os.path.join(config.train_dir, "dist", "backward_scripted.pt"))
 
     else:
         raise RuntimeError("unspecified mode")
