@@ -10,7 +10,7 @@ import re
 import logging
 from dataclasses import dataclass
 
-import config
+from config import config
 from deepnovo_cython_modules import get_ion_index, process_peaks
 
 logger = logging.getLogger(__name__)

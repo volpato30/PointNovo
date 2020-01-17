@@ -3,7 +3,7 @@ import os
 from utils.merge import cat_file_mgf, cat_file_feature, split_identified_and_unidentified_features
 import csv
 import numpy as np
-import config
+from config import config
 from data_reader import parse_raw_sequence
 
 

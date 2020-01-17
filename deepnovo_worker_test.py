@@ -14,7 +14,7 @@ import sys
 
 import numpy as np
 
-import config
+from config import config
 from data_reader import parse_raw_sequence
 
 class WorkerTest(object):

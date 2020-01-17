@@ -2,7 +2,7 @@ import os
 import torch
 import time
 import logging
-import config
+from config import config
 from typing import List
 import numpy as np
 from dataclasses import dataclass

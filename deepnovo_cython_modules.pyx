@@ -12,7 +12,7 @@ import numpy as np
 cimport numpy as np
 cimport cython
 
-import config
+from config import config
 
 mass_ID_np = config.mass_ID_np
 cdef int GO_ID = config.GO_ID

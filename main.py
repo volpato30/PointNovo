@@ -3,7 +3,7 @@ import torch
 import subprocess
 import logging
 import logging.config
-import config
+from config import config
 from train_func import train, build_model, validation, perplexity
 from data_reader import DeepNovoDenovoDataset, collate_func, DeepNovoTrainDataset, DBSearchDataset
 from db_searcher import DataBaseSearcher

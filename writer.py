@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from data_reader import DDAFeature
-import config
+from config import config
 import logging
 import numpy as np
 

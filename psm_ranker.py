@@ -6,7 +6,7 @@ from data_reader import DBSearchDataset, DBSearchData
 from model import DeepNovoPointNet, device
 from writer import PercolatorWriter, PSM
 import torch.nn.functional as F
-import config
+from config import config
 import logging
 
 logger = logging.getLogger(__name__)

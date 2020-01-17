@@ -2,7 +2,7 @@ import os
 import torch
 from torch import optim
 import torch.nn.functional as F
-import config
+from config import config
 from data_reader import DeepNovoTrainDataset, collate_func
 from model import DeepNovoModel, device, InitNet
 import time

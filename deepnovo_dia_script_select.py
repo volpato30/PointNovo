@@ -16,7 +16,7 @@ import re
 
 import numpy as np
 import math
-import config
+from config import config
 
 
 def read_feature_accuracy(input_file, split_char):

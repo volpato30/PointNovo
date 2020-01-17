@@ -4,7 +4,7 @@ from Bio import SeqIO
 from pyteomics import parser
 import numpy as np
 import logging
-import config
+from config import config
 from dataclasses import dataclass
 import re
 
