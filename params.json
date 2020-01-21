@@ -37,7 +37,7 @@
   "input_feature_file_test": "ABRF_DDA/features.csv.identified.valid.nodup",
   "denovo_input_spectrum_file": "ABRF_DDA/spectrums.mgf",
   "denovo_input_feature_file": "ABRF_DDA/features.csv.identified.test.nodup",
-  "target_file": "ABRF_DDA/denovo_features.csv",
+  "target_file": "ABRF_DDA/features.csv.identified.test.nodup",
   "batch_size": 16,
   "num_workers": 6,
   "steps_per_validation": 300,
