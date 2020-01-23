@@ -30,7 +30,7 @@ def get_sinusoid_encoding_table(n_position, embed_size, padding_idx=0):
     n_position: maximum integer that the embedding op could receive
     embed_size: embed size
     return
-      a embedding matrix of shape [n_position, embed_size]
+      a embedding matrix of shape [n_position+1, embed_size]
     """
 
     def cal_angle(position, hid_idx):
@@ -176,9 +176,11 @@ def process_peaks(spectrum_mz_list, spectrum_intensity_list, peptide_mass):
   neutral_mass = spectrum_mz - charge * config.mass_H
   in_bound_mask = np.logical_and(neutral_mass > 0., neutral_mass < config.MZ_MAX)
   neutral_mass[~in_bound_mask] = 0.
+
   # intensity
   spectrum_intensity = np.array(spectrum_intensity_list, dtype=np.float32)
   norm_intensity = spectrum_intensity / spectrum_intensity_max
+  norm_intensity[~in_bound_mask] = 0.
 
   spectrum_representation = np.zeros(config.embedding_size, dtype=np.float32)
   for i, loc in enumerate(spectrum_mz_location):
