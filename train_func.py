@@ -238,16 +238,17 @@ def train():
 
             peak_location, \
             peak_intensity, \
-            spectrum_representation, \
+            _, \
             batch_forward_id_target, \
             batch_backward_id_target, \
             batch_forward_ion_index, \
             batch_backward_ion_index, \
             batch_forward_id_input, \
-            batch_backward_id_input = extract_and_move_data(data)
+            batch_backward_id_input = extract_and_move_data(data)  # do not use the spectrum reso computed by cython module
             batch_size = batch_backward_id_target.size(0)
 
             if config.use_lstm:
+                spectrum_representation = forward_deepnovo.get_spectrum_representation(peak_location, peak_intensity)
                 initial_state_tuple = init_net(spectrum_representation)
                 forward_logit, _ = forward_deepnovo(batch_forward_ion_index, peak_location, peak_intensity,
                                                     batch_forward_id_input, initial_state_tuple)

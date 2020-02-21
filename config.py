@@ -34,7 +34,7 @@ parser.set_defaults(test=False)
 parser.set_defaults(serialize_model=False)
 
 args = parser.parse_args()
-python_obj_dict = {"FLAGS": args, "train_dir": args.train_dir, "use_lstm": False}
+python_obj_dict = {"FLAGS": args, "train_dir": args.train_dir}
 
 
 class JasonConfig(object):
@@ -160,3 +160,4 @@ class Config(object):
 
 
 config = Config(params_obj, constant_params_obj, python_obj_dict)
+

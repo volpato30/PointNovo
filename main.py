@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    logger.info(f"use_lstm: {config.use_lstm}")
     if config.FLAGS.train:
         logger.info("training mode")
         train()
@@ -94,28 +95,34 @@ def main():
         assert config.use_lstm == False
         forward_deepnovo, backward_deepnovo, init_net = build_model(training=False)
 
-        forward_deepnovo = forward_deepnovo.to(device)
-        backward_deepnovo = backward_deepnovo.to(device)
+        # forward_deepnovo = forward_deepnovo.to(device)
+        # backward_deepnovo = backward_deepnovo.to(device)
+        #
+        # # create fake inputs
+        # with torch.no_grad():
+        #     fake_input_ones = (torch.ones((1, 1, config.vocab_size, config.num_ion)).float().to(device),
+        #                        torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+        #                        torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+        #                        )
+        #     forward_output = forward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
+        #     forward_script_model = torch.jit.trace(forward_deepnovo, fake_input_ones)
+        #     backward_output = backward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
+        #     backward_script_model = torch.jit.trace(backward_deepnovo, fake_input_ones)
+        #     logger.info(f"forward output:\n{forward_output}")
+        #     logger.info(f"backward output:\n{backward_output}")
 
-        # create fake inputs
-        with torch.no_grad():
-            fake_input_ones = (torch.ones((1, 1, config.vocab_size, config.num_ion)).float().to(device),
-                               torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
-                               torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
-                               )
-            forward_output = forward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
-            forward_script_model = torch.jit.trace(forward_deepnovo, fake_input_ones)
-            backward_output = backward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
-            backward_script_model = torch.jit.trace(backward_deepnovo, fake_input_ones)
-            logger.info(f"forward output:\n{forward_output}")
-            logger.info(f"backward output:\n{backward_output}")
+        # if not os.path.exists(os.path.join(config.train_dir, "dist")):
+        #     os.mkdir(os.path.join(config.train_dir, "dist"))
+        # forward_script_model.save(os.path.join(config.train_dir, "dist", "forward_scripted.pt"))
+        # backward_script_model.save(os.path.join(config.train_dir, "dist", "backward_scripted.pt"))
 
-        # forward_script_model = torch.jit.script(forward_deepnovo)
-        # backward_script_model = torch.jit.script(backward_deepnovo)
-        if not os.path.exists(os.path.join(config.train_dir, "dist")):
-            os.mkdir(os.path.join(config.train_dir, "dist"))
-        forward_script_model.save(os.path.join(config.train_dir, "dist", "forward_scripted.pt"))
-        backward_script_model.save(os.path.join(config.train_dir, "dist", "backward_scripted.pt"))
+        forward_script_model = torch.jit.script(forward_deepnovo)
+        backward_script_model = torch.jit.script(backward_deepnovo)
+        forward_script_model.save(config.forward_model_path)
+        backward_script_model.save(config.backward_model_path)
+        if config.use_lstm:
+            init_script_model = torch.jit.script(init_net)
+            init_script_model.save(config.initnet_model_path)
 
     else:
         raise RuntimeError("unspecified mode")

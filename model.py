@@ -11,6 +11,34 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 num_units = config.num_units
 
 
+class SpectrumEncoding(nn.Module):
+
+    def __init__(self, d_model, max_len, spectrum_reso):
+        super(SpectrumEncoding, self).__init__()
+        self.d_model = d_model
+        self.spectrum_reso = spectrum_reso
+        pe = torch.zeros(max_len + 1, d_model)
+        position = torch.arange(0, max_len + 1, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe[0, :] = 0.
+        self.register_buffer('pe', pe)
+
+    def forward(self, peaks_location, peaks_intensity):
+        """
+        peaks_location: [batch, N]
+        peaks_intensity: [batch, N]
+        return: [batch, embed_size], embedded spectrum representation
+        """
+        batch, N = peaks_location.size(0), peaks_location.size(1)
+        batch_embedded_spectrum = torch.zeros(batch, self.d_model).to(peaks_location.device)
+        loc = torch.ceil(peaks_location * self.spectrum_reso).long()
+        for i in range(N):
+            batch_embedded_spectrum += torch.index_select(self.pe, dim=0, index=loc[:, i]) * peaks_intensity[:, i:i+1]
+        return batch_embedded_spectrum
+
+
 class TNet(nn.Module):
     """
     the T-net structure in the Point Net paper
@@ -109,7 +137,7 @@ class InitNet(nn.Module):
     def forward(self, spectrum_representation):
         """
 
-        :param spectrum_representation: [N, embedding_size]
+        :param spectrum_representation: [batch, embedding_size]
         :return:
             [num_lstm_layers, batch_size, lstm_units], [num_lstm_layers, batch_size, lstm_units],
         """
@@ -135,6 +163,11 @@ class DeepNovoPointNetWithLSTM(nn.Module):
         self.dropout = nn.Dropout(config.dropout_rate)
         self.output_layer = nn.Linear(config.num_units + config.lstm_hidden_units,
                                       config.vocab_size)
+        self.spectrum_encoding = SpectrumEncoding(d_model=config.embedding_size, max_len=config.n_position,
+                                                  spectrum_reso=config.spectrum_reso)
+    @torch.jit.export
+    def get_spectrum_representation(self, peaks_location, peaks_intensity):
+        return self.spectrum_encoding(peaks_location, peaks_intensity)
 
     def forward(self, location_index, peaks_location, peaks_intensity, aa_input=None, state_tuple=None):
         """
