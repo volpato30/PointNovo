@@ -4,7 +4,7 @@ from torch import optim
 import torch.nn.functional as F
 from config import config
 from data_reader import DeepNovoTrainDataset, collate_func
-from model import DeepNovoModel, device, InitNet
+from model import DeepNovoModel, device, InitNet, SpectrumEncoding
 import time
 import math
 import logging
@@ -210,6 +210,9 @@ def train():
                                                     num_workers=config.num_workers,
                                                     collate_fn=collate_func)
     forward_deepnovo, backward_deepnovo, init_net = build_model()
+    if config.use_lstm:
+        spectrum_encoding = SpectrumEncoding(d_model=config.embedding_size, max_len=config.n_position,
+                                             spectrum_reso=config.spectrum_reso)
     # sparse_params = forward_deepnovo.spectrum_embedding_matrix.parameters()
 
     ## in DeepNovoV2, there is no need to train parameters in init_net
@@ -248,7 +251,7 @@ def train():
             batch_size = batch_backward_id_target.size(0)
 
             if config.use_lstm:
-                spectrum_representation = forward_deepnovo.get_spectrum_representation(peak_location, peak_intensity)
+                spectrum_representation = spectrum_encoding(peak_location, peak_intensity).detach().to(device)
                 initial_state_tuple = init_net(spectrum_representation)
                 forward_logit, _ = forward_deepnovo(batch_forward_ion_index, peak_location, peak_intensity,
                                                     batch_forward_id_input, initial_state_tuple)

@@ -12,11 +12,14 @@ num_units = config.num_units
 
 
 class SpectrumEncoding(nn.Module):
-
+    """
+    every ops in this module is performed on CPU
+    """
     def __init__(self, d_model, max_len, spectrum_reso):
         super(SpectrumEncoding, self).__init__()
         self.d_model = d_model
         self.spectrum_reso = spectrum_reso
+        self.N = config.MAX_NUM_PEAK
         pe = torch.zeros(max_len + 1, d_model)
         position = torch.arange(0, max_len + 1, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
@@ -31,11 +34,15 @@ class SpectrumEncoding(nn.Module):
         peaks_intensity: [batch, N]
         return: [batch, embed_size], embedded spectrum representation
         """
-        batch, N = peaks_location.size(0), peaks_location.size(1)
-        batch_embedded_spectrum = torch.zeros(batch, self.d_model).to(peaks_location.device)
-        loc = torch.ceil(peaks_location * self.spectrum_reso).long()
-        for i in range(N):
-            batch_embedded_spectrum += torch.index_select(self.pe, dim=0, index=loc[:, i]) * peaks_intensity[:, i:i+1]
+        cpu_location = peaks_location.to(torch.device("cpu"))
+        cpu_intensity = peaks_intensity.to(torch.device("cpu"))
+        batch = peaks_location.size(0)
+        batch_embedded_spectrum = torch.zeros(batch, self.d_model)
+        loc = torch.ceil(cpu_location * self.spectrum_reso).long()
+        for i in range(self.N):
+            temp1 = torch.index_select(self.pe, dim=0, index=loc[:, i])
+            temp2 = temp1 * cpu_intensity[:, i:i+1]
+            batch_embedded_spectrum += temp2
         return batch_embedded_spectrum
 
 
@@ -133,6 +140,8 @@ class InitNet(nn.Module):
     def __init__(self):
         super(InitNet, self).__init__()
         self.init_state_layer = nn.Linear(config.embedding_size, 2 * config.lstm_hidden_units)
+        self.lstm_hidden_units = config.lstm_hidden_units
+        self.num_lstm_layers = config.num_lstm_layers
 
     def forward(self, spectrum_representation):
         """
@@ -142,11 +151,11 @@ class InitNet(nn.Module):
             [num_lstm_layers, batch_size, lstm_units], [num_lstm_layers, batch_size, lstm_units],
         """
         x = torch.tanh(self.init_state_layer(spectrum_representation))
-        h_0, c_0 = torch.split(x, config.lstm_hidden_units, dim=1)
+        h_0, c_0 = torch.split(x, self.lstm_hidden_units, dim=1)
         h_0 = torch.unsqueeze(h_0, dim=0)
-        h_0 = h_0.repeat(config.num_lstm_layers, 1, 1)
+        h_0 = h_0.repeat(self.num_lstm_layers, 1, 1)
         c_0 = torch.unsqueeze(c_0, dim=0)
-        c_0 = c_0.repeat(config.num_lstm_layers, 1, 1)
+        c_0 = c_0.repeat(self.num_lstm_layers, 1, 1)
         return h_0, c_0
 
 
@@ -160,16 +169,15 @@ class DeepNovoPointNetWithLSTM(nn.Module):
                             config.lstm_hidden_units,
                             num_layers=config.num_lstm_layers,
                             batch_first=True)
+        # make sure lstm module has contiguous weights
+        self.lstm.flatten_parameters()
         self.dropout = nn.Dropout(config.dropout_rate)
         self.output_layer = nn.Linear(config.num_units + config.lstm_hidden_units,
                                       config.vocab_size)
-        self.spectrum_encoding = SpectrumEncoding(d_model=config.embedding_size, max_len=config.n_position,
-                                                  spectrum_reso=config.spectrum_reso)
-    @torch.jit.export
-    def get_spectrum_representation(self, peaks_location, peaks_intensity):
-        return self.spectrum_encoding(peaks_location, peaks_intensity)
 
-    def forward(self, location_index, peaks_location, peaks_intensity, aa_input=None, state_tuple=None):
+        self.distance_scale_factor = config.distance_scale_factor
+
+    def forward(self, location_index, peaks_location, peaks_intensity, aa_input, state_tuple):
         """
 
         :param location_index: [batch, T, 26, 8] long
@@ -180,9 +188,7 @@ class DeepNovoPointNetWithLSTM(nn.Module):
         :return:
             logits: [batch, T, 26]
         """
-        assert aa_input is not None
         N = peaks_location.size(1)
-        assert N == peaks_intensity.size(1)
         batch_size, T, vocab_size, num_ion = location_index.size()
 
         peaks_location = peaks_location.view(batch_size, 1, N, 1)
@@ -196,7 +202,7 @@ class DeepNovoPointNetWithLSTM(nn.Module):
 
         location_exp_minus_abs_diff = torch.exp(
             -torch.abs(
-                (peaks_location - location_index) * config.distance_scale_factor
+                (peaks_location - location_index) * self.distance_scale_factor
             )
         )
         # [batch, T, N, 26*8]
@@ -242,6 +248,8 @@ class InferenceModelWrapper(object):
         # make sure all models are in eval mode
         self.forward_model.eval()
         self.backward_model.eval()
+        self.spectrum_encoding = SpectrumEncoding(d_model=config.embedding_size, max_len=config.n_position,
+                                                  spectrum_reso=config.spectrum_reso)
         if config.use_lstm:
             assert init_net is not None
             self.init_net = init_net

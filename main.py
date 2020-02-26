@@ -8,7 +8,7 @@ from train_func import train, build_model, validation, perplexity
 from data_reader import DeepNovoDenovoDataset, collate_func, DeepNovoTrainDataset, DBSearchDataset
 from db_searcher import DataBaseSearcher
 from psm_ranker import PSMRank
-from model import InferenceModelWrapper, device
+from model import InferenceModelWrapper, device, SpectrumEncoding
 from denovo import IonCNNDenovo
 import time
 from writer import DenovoWriter, PercolatorWriter
@@ -92,7 +92,6 @@ def main():
     elif config.FLAGS.serialize_model:
         device = torch.device("cpu")
         logger.info("serialize the trained model into a distributable format")
-        assert config.use_lstm == False
         forward_deepnovo, backward_deepnovo, init_net = build_model(training=False)
 
         # forward_deepnovo = forward_deepnovo.to(device)
@@ -116,13 +115,54 @@ def main():
         # forward_script_model.save(os.path.join(config.train_dir, "dist", "forward_scripted.pt"))
         # backward_script_model.save(os.path.join(config.train_dir, "dist", "backward_scripted.pt"))
 
-        forward_script_model = torch.jit.script(forward_deepnovo)
-        backward_script_model = torch.jit.script(backward_deepnovo)
+        forward_deepnovo = forward_deepnovo.to(device)
+        backward_deepnovo = backward_deepnovo.to(device)
+
+        # create fake inputs
+        with torch.no_grad():
+            if config.use_lstm:
+                fake_input_ones = (torch.ones((1, 1, config.vocab_size, config.num_ion)).float().to(device),
+                                   torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                                   torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                                   torch.ones((1, 1)).long().to(device),
+                                   (torch.ones((1, 1, config.embedding_size)).float().to(device),
+                                    torch.ones((1, 1, config.embedding_size)).float().to(device)),
+                                   )
+                # fake_input_spectrum = (
+                #     torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                #     torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                # )
+                # fake_input = {"forward": fake_input_ones}
+                # forward_script_model = torch.jit.trace_module(forward_deepnovo, fake_input)
+                # backward_script_model = torch.jit.trace_module(backward_deepnovo, fake_input)
+                forward_script_model = torch.jit.trace(forward_deepnovo, fake_input_ones)
+                backward_script_model = torch.jit.trace(backward_deepnovo, fake_input_ones)
+                forward_output = forward_deepnovo(*fake_input_ones)[0].cpu().numpy().flatten()
+                backward_output = backward_deepnovo(*fake_input_ones)[0].cpu().numpy().flatten()
+                # _ = forward_deepnovo.get_spectrum_representation(*fake_input_spectrum)
+                # forward_script_model = torch.jit.trace(forward_deepnovo, fake_input_ones)
+
+            else:
+                fake_input_ones = (torch.ones((1, 1, config.vocab_size, config.num_ion)).float().to(device),
+                                   torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                                   torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                                   )
+                forward_output = forward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
+                forward_script_model = torch.jit.trace(forward_deepnovo, fake_input_ones)
+                backward_output = backward_deepnovo(*fake_input_ones).cpu().numpy().flatten()
+                backward_script_model = torch.jit.trace(backward_deepnovo, fake_input_ones)
+            logger.debug(f"forward output:\n{forward_output}")
+            logger.debug(f"backward output:\n{backward_output}")
+
         forward_script_model.save(config.forward_model_path)
         backward_script_model.save(config.backward_model_path)
         if config.use_lstm:
             init_script_model = torch.jit.script(init_net)
             init_script_model.save(config.initnet_model_path)
+            spectrum_encoding = SpectrumEncoding(d_model=config.embedding_size, max_len=config.n_position,
+                                                 spectrum_reso=config.spectrum_reso)
+            script_encoding = torch.jit.script(spectrum_encoding)
+            script_encoding.save(config.spectrum_encoding_model_path)
 
     else:
         raise RuntimeError("unspecified mode")

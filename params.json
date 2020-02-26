@@ -4,6 +4,7 @@
   "forward_model_path": "/home/rui/CLionProjects/PointNovo-cpp/dist/forward_scripted.pt",
   "backward_model_path": "/home/rui/CLionProjects/PointNovo-cpp/dist/backward_scripted.pt",
   "initnet_model_path": "/home/rui/CLionProjects/PointNovo-cpp/dist/initnet.pt",
+  "spectrum_encoding_model_path": "/home/rui/CLionProjects/PointNovo-cpp/dist/spectrum_encoding.pt",
   "vocab_reverse": ["A",
                  "R",
                  "N",
