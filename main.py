@@ -117,6 +117,8 @@ def main():
 
         forward_deepnovo = forward_deepnovo.to(device)
         backward_deepnovo = backward_deepnovo.to(device)
+        if config.use_lstm:
+            init_net = init_net.to(device)
 
         # create fake inputs
         with torch.no_grad():
