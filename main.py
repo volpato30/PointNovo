@@ -165,7 +165,33 @@ def main():
                                                  spectrum_reso=config.spectrum_reso)
             script_encoding = torch.jit.script(spectrum_encoding)
             script_encoding.save(config.spectrum_encoding_model_path)
+    elif config.FLAGS.onnx:
+        device = torch.device("cpu")
+        logger.info("serialize the trained model into ONNX format")
+        forward_deepnovo, backward_deepnovo, init_net = build_model(training=False)
+        forward_deepnovo = forward_deepnovo.to(device)
+        backward_deepnovo = backward_deepnovo.to(device)
+        if config.use_lstm:
+            init_net = init_net.to(device)
 
+        # create fake inputs
+        with torch.no_grad():
+            if config.use_lstm:
+                raise ValueError()
+
+            else:
+                fake_input_ones = (torch.ones((1, 1, config.vocab_size, config.num_ion)).float().to(device),
+                                   torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                                   torch.ones((1, config.MAX_NUM_PEAK)).float().to(device),
+                                   )
+                input_names = ["theoretical_ion_mz", "spectrum_mz", "spectrum_intensity"]
+                output_names = ["aa_prob_logits"]
+                torch.onnx.export(forward_deepnovo, fake_input_ones, "onnx/forward_model.onnx", verbose=True,
+                                  input_names=input_names,
+                                  output_names=output_names)
+                torch.onnx.export(backward_deepnovo, fake_input_ones, "onnx/backward_model.onnx", verbose=True,
+                                  input_names=input_names,
+                                  output_names=output_names)
     else:
         raise RuntimeError("unspecified mode")
 
