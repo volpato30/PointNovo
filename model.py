@@ -188,6 +188,7 @@ class DeepNovoPointNetWithLSTM(nn.Module):
         :return:
             logits: [batch, T, 26]
         """
+        self.lstm.flatten_parameters()
         N = peaks_location.size(1)
         batch_size, T, vocab_size, num_ion = location_index.size()
 
