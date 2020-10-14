@@ -68,6 +68,14 @@ def get_ion_index(peptide_mass, prefix_mass, direction):
     candidate_y_mass = prefix_mass + mass_ID_np
     candidate_b_mass = peptide_mass - candidate_y_mass
   candidate_a_mass = candidate_b_mass - mass_CO
+  candidate_c_mass = candidate_b_mass + 18.0344 - 1.0078
+  candidate_c_minus_1_mass = candidate_c_mass - 1.0078
+  candidate_z_mass = candidate_y_mass - mass_NH3
+  candidate_z_prime_mass = candidate_z_mass + 1.0078
+  candidate_w_L_mass = candidate_z_mass - 43.05
+  candidate_w_prime_L_mass = candidate_z_prime_mass - 43.05
+  candidate_w_I_mass = candidate_z_mass - 29.04
+  candidate_w_prime_I_mass = candidate_z_prime_mass - 29.04
 
   # b-ions
   candidate_b_H2O = candidate_b_mass - mass_H2O
@@ -87,12 +95,6 @@ def get_ion_index(peptide_mass, prefix_mass, direction):
   candidate_y_plus2_charge1 = ((candidate_y_mass + 2 * mass_H) / 2
                                - mass_H)
 
-  # ion_2
-  #~   b_ions = [candidate_b_mass]
-  #~   y_ions = [candidate_y_mass]
-  #~   ion_mass_list = b_ions + y_ions
-
-  # ion_8
   b_ions = [candidate_b_mass,
             candidate_b_H2O,
             candidate_b_NH3,
@@ -105,17 +107,26 @@ def get_ion_index(peptide_mass, prefix_mass, direction):
             candidate_a_H2O,
             candidate_a_NH3,
             candidate_a_plus2_charge1]
-  ion_mass_list = b_ions + y_ions + a_ions
-  ion_mass = np.array(ion_mass_list, dtype=np.float32)  # 8 by 26
+  c_z_ions = [
+      candidate_c_mass,
+      candidate_c_mass - mass_H2O,
+      candidate_c_mass - mass_NH3,
+      candidate_c_minus_1_mass,
+      candidate_z_mass,
+        candidate_z_prime_mass,
+  ]
+  ion_mass_list = b_ions + y_ions + a_ions + c_z_ions + [candidate_w_I_mass, candidate_w_prime_I_mass,
+                                              candidate_w_L_mass, candidate_w_prime_L_mass]
+  ion_mass = np.array(ion_mass_list, dtype=np.float32)  # 22 by 26
 
   # ion locations
-  # ion_location = np.ceil(ion_mass * SPECTRUM_RESOLUTION).astype(np.int64) # 8 by 26
+  # ion_location = np.ceil(ion_mass * SPECTRUM_RESOLUTION).astype(np.int64) # 22 by 26
 
   in_bound_mask = np.logical_and(
       ion_mass > 0,
       ion_mass <= config.MZ_MAX).astype(np.float32)
-  ion_location = ion_mass * in_bound_mask  # 8 by 26, out of bound index would have value 0
-  return ion_location.transpose()  # 26 by 8
+  ion_location = ion_mass * in_bound_mask  # 22 by 26, out of bound index would have value 0
+  return ion_location.transpose()  # 26 by 22
 
 
 def pad_to_length(data: list, length, pad_token=0.):

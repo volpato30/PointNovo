@@ -236,7 +236,7 @@ print("MAX_LEN ", MAX_LEN)
 # HYPER-PARAMETERS of the NEURAL NETWORKS
 # ==============================================================================
 
-num_ion = 12
+num_ion = 22
 print("num_ion ", num_ion)
 
 weight_decay = 0.0  # no weight decay lead to better result.
