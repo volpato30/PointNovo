@@ -282,15 +282,15 @@ cleavage_rule = "trypsin"
 num_missed_cleavage = 2
 knapsack_file = "knapsack.npy"
 
-input_spectrum_file_train = "ABRF_DDA/spectrums.mgf"
-input_feature_file_train = "ABRF_DDA/features.csv.identified.train.nodup"
-input_spectrum_file_valid = "ABRF_DDA/spectrums.mgf"
-input_feature_file_valid = "ABRF_DDA/features.csv.identified.valid.nodup"
+input_spectrum_file_train = "EtHCD/merge_spectrum_EtHCD.mgf"
+input_feature_file_train = "EtHCD/merge_features_EtHCD.csv.identified.train.nodup"
+input_spectrum_file_valid = "EtHCD/merge_spectrum_EtHCD.mgf"
+input_feature_file_valid = "EtHCD/merge_features_EtHCD.csv.identified.valid.nodup"
 input_spectrum_file_test = "data.training/dia.hla.elife.jurkat_oxford/testing_jurkat_oxford.spectrum.mgf"
 input_feature_file_test = "data.training/dia.hla.elife.jurkat_oxford/testing_jurkat_oxford.feature.csv"
 # denovo files
-denovo_input_spectrum_file = "ABRF_DDA/spectrums.mgf"
-denovo_input_feature_file = "ABRF_DDA/features.csv.identified.test.nodup"
+denovo_input_spectrum_file = "EtHCD/merge_spectrum_EtHCD.mgf"
+denovo_input_feature_file = "EtHCD/merge_features_EtHCD.csv.identified.test.nodup"
 denovo_output_file = denovo_input_feature_file + ".deepnovo_denovo"
 
 # db search files
