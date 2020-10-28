@@ -69,6 +69,7 @@ def build_model(training=True):
 
     # load pretrained params if exist
     if os.path.exists(os.path.join(config.train_dir, forward_model_save_name)):
+        logger.info(f"reading from pretrained weights in {config.train_dir}")
         assert os.path.exists(os.path.join(config.train_dir, backward_model_save_name))
         logger.info("load pretrained model")
         forward_deepnovo.load_state_dict(torch.load(os.path.join(config.train_dir, forward_model_save_name),

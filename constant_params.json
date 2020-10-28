@@ -52,7 +52,7 @@
   "weight_decay": 0.0,
   "embedding_size": 512,
   "num_lstm_layers": 1,
-  "num_units": 64,
+  "num_units": 128,
   "lstm_hidden_units": 512,
   "dropout_rate": 0.25,
   "distance_scale_factor": 100,
