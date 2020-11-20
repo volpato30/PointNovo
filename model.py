@@ -60,13 +60,13 @@ class DeepNovoPointNet(nn.Module):
     def __init__(self):
         super(DeepNovoPointNet, self).__init__()
         self.t_net = TNet(with_lstm=False)
-        self.distance_scale_factor = config.distance_scale_factor
+        self.distance_scale_factor = nn.Parameter(torch.tensor(0).float(), requires_grad=True)
 
     def forward(self, location_index, peaks_location, peaks_intensity):
         """
 
-        :param location_index: [batch, T, 26, 8] long
-        :param peaks_location: [batch, N] N stands for MAX_NUM_PEAK, long
+        :param location_index: [batch, T, 26, 8] float
+        :param peaks_location: [batch, N] N stands for MAX_NUM_PEAK, float
         :param peaks_intensity: [batch, N], float32
         :return:
             logits: [batch, T, 26]
@@ -86,9 +86,11 @@ class DeepNovoPointNet(nn.Module):
         location_index = location_index.view(batch_size, T, 1, vocab_size * num_ion)
         location_index_mask = (location_index > 1e-5).float()
 
+        ppm_diff = (peaks_location - location_index) / (location_index + 1e-6) * 1e6
+
         location_exp_minus_abs_diff = torch.exp(
             -torch.abs(
-                (peaks_location - location_index) * self.distance_scale_factor
+                ppm_diff / 5 * torch.sigmoid(self.distance_scale_factor)
             )
         )
         # [batch, T, N, 26*8]
@@ -137,6 +139,7 @@ class DeepNovoPointNetWithLSTM(nn.Module):
         self.dropout = nn.Dropout(config.dropout_rate)
         self.output_layer = nn.Linear(config.num_units + config.lstm_hidden_units,
                                       config.vocab_size)
+        self.distance_scale_factor = nn.Parameter(torch.tensor(0).float(), requires_grad=True)
 
     def forward(self, location_index, peaks_location, peaks_intensity, aa_input=None, state_tuple=None):
         """
@@ -163,9 +166,11 @@ class DeepNovoPointNetWithLSTM(nn.Module):
         location_index = location_index.view(batch_size, T, 1, vocab_size * num_ion)
         location_index_mask = (location_index > 1e-5).float()
 
+        ppm_diff = (peaks_location - location_index) / (location_index + 1e-6) * 1e6
+
         location_exp_minus_abs_diff = torch.exp(
             -torch.abs(
-                (peaks_location - location_index) * config.distance_scale_factor
+                ppm_diff / 5 * torch.sigmoid(self.distance_scale_factor)
             )
         )
         # [batch, T, N, 26*8]
