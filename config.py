@@ -214,7 +214,7 @@ mass_AA_min = mass_AA["G"]  # 57.02146
 
 MZ_MAX = 5000.0 if FLAGS.search_db else 3000.0
 
-MAX_NUM_PEAK = 1000
+MAX_NUM_PEAK = 500
 
 KNAPSACK_AA_RESOLUTION = 10000  # 0.0001 Da
 mass_AA_min_round = int(round(mass_AA_min * KNAPSACK_AA_RESOLUTION))  # 57.02146
@@ -251,7 +251,7 @@ embedding_size = 512
 print("embedding_size ", embedding_size)
 
 num_lstm_layers = 1
-num_units = 64
+num_units = 32
 lstm_hidden_units = 512
 print("num_lstm_layers ", num_lstm_layers)
 print("num_units ", num_units)
@@ -282,10 +282,10 @@ cleavage_rule = "trypsin"
 num_missed_cleavage = 2
 knapsack_file = "knapsack.npy"
 
-input_spectrum_file_train = "ABRF_DDA/spectrums.mgf"
-input_feature_file_train = "ABRF_DDA/features.csv.identified.train.nodup"
-input_spectrum_file_valid = "ABRF_DDA/spectrums.mgf"
-input_feature_file_valid = "ABRF_DDA/features.csv.identified.valid.nodup"
+input_spectrum_file_train = "HCD/merge_spectrum_HCD.mgf"
+input_feature_file_train = "HCD/trypsin_train.csv"
+input_spectrum_file_valid = "HCD/merge_spectrum_HCD.mgf"
+input_feature_file_valid = "HCD/trypsin_valid.csv"
 input_spectrum_file_test = "data.training/dia.hla.elife.jurkat_oxford/testing_jurkat_oxford.spectrum.mgf"
 input_feature_file_test = "data.training/dia.hla.elife.jurkat_oxford/testing_jurkat_oxford.feature.csv"
 # denovo files
