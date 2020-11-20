@@ -212,7 +212,7 @@ mass_AA_min = mass_AA["G"]  # 57.02146
 # ==============================================================================
 
 
-MZ_MAX = 5000.0 if FLAGS.search_db else 3000.0
+MZ_MAX = 5000.0
 
 MAX_NUM_PEAK = 1000
 
@@ -229,7 +229,7 @@ PRECURSOR_MASS_PRECISION_TOLERANCE = 0.01
 AA_MATCH_PRECISION = 0.1
 
 # skip (x > MZ_MAX,MAX_LEN)
-MAX_LEN = 60 if FLAGS.search_denovo or FLAGS.search_db else 30
+MAX_LEN = 60
 print("MAX_LEN ", MAX_LEN)
 
 # ==============================================================================
@@ -330,7 +330,6 @@ pcol_scan_list_middle = 8
 pcol_scan_list_original = 9
 pcol_score_max = 10
 
-distance_scale_factor = 100.
 sinusoid_base = 30000.
 spectrum_reso = 10
 n_position = int(MZ_MAX) * spectrum_reso
