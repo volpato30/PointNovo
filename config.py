@@ -212,7 +212,7 @@ mass_AA_min = mass_AA["G"]  # 57.02146
 # ==============================================================================
 
 
-MZ_MAX = 5000.0
+MZ_MAX = 8000.0
 
 MAX_NUM_PEAK = 500
 
@@ -283,14 +283,14 @@ num_missed_cleavage = 2
 knapsack_file = "knapsack.npy"
 
 input_spectrum_file_train = "HCD/merge_spectrum_HCD.mgf"
-input_feature_file_train = "HCD/trypsin_train.csv"
+input_feature_file_train = "HCD/Elastase_train.csv"
 input_spectrum_file_valid = "HCD/merge_spectrum_HCD.mgf"
-input_feature_file_valid = "HCD/trypsin_valid.csv"
+input_feature_file_valid = "HCD/Elastase_valid.csv"
 input_spectrum_file_test = "data.training/dia.hla.elife.jurkat_oxford/testing_jurkat_oxford.spectrum.mgf"
 input_feature_file_test = "data.training/dia.hla.elife.jurkat_oxford/testing_jurkat_oxford.feature.csv"
 # denovo files
-denovo_input_spectrum_file = "ABRF_DDA/spectrums.mgf"
-denovo_input_feature_file = "ABRF_DDA/features.csv.identified.test.nodup"
+denovo_input_spectrum_file = "HCD/merge_spectrum_HCD.mgf"
+denovo_input_feature_file = "HCD/Elastase_valid.csv"
 denovo_output_file = denovo_input_feature_file + ".deepnovo_denovo"
 
 # db search files
