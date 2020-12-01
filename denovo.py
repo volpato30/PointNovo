@@ -6,9 +6,8 @@ from config import config
 from typing import List
 import numpy as np
 from dataclasses import dataclass
-from model import Direction, InferenceModelWrapper, device
-from deepnovo_cython_modules import get_ion_index
-from data_reader import DeepNovoDenovoDataset, chunks
+from model import Direction, InferenceModelWrapper, device, torch_get_ion_index
+from data_reader import BatchDenovoData
 from writer import BeamSearchedSequence, DenovoWriter, DDAFeature
 
 logger = logging.getLogger(__name__)
@@ -102,15 +101,15 @@ class IonCNNDenovo(object):
         self.knapsack_searcher = KnapsackSearcher(MZ_MAX, knapsack_file)
 
     def _beam_search(self, model_wrapper: InferenceModelWrapper,
-                     feature_dp_batch: list, start_point_batch: list) -> list:
+                     batch_denovo_data: BatchDenovoData, start_point_batch: list) -> list:
         """
 
         :param model_wrapper:
-        :param feature_dp_batch: list of DenovoData
+        :param batch_denovo_data:
         :param start_point_batch:
         :return:
         """
-        num_features = len(feature_dp_batch)
+        num_features = len(batch_denovo_data.original_dda_feature_list)
         top_path_batch = [[] for _ in range(num_features)]
 
         direction_cint_map = {Direction.forward: 0, Direction.backward: 1}
@@ -127,14 +126,10 @@ class IonCNNDenovo(object):
         else:
             raise ValueError('direction neither forward nor backward')
 
-        # step 1: extract original spectrum
-        batch_peak_location = np.array([x.peak_location for x in feature_dp_batch])
-        batch_peak_intensity = np.array([x.peak_intensity for x in feature_dp_batch])
-        # batch_spectrum_representation = np.array([x.spectrum_representation for x in feature_dp_batch])
 
-        batch_peak_location = torch.from_numpy(batch_peak_location).to(device)
-        batch_peak_intensity = torch.from_numpy(batch_peak_intensity).to(device)
-        batch_spectrum_representation = model_wrapper.spectrum_encoding(batch_peak_location, batch_peak_intensity).to(device)
+        batch_peak_location = batch_denovo_data.peak_location.to(device)
+        batch_peak_intensity = batch_denovo_data.peak_intensity.to(device)
+        batch_spectrum_representation = batch_denovo_data.spectrum_representation.to(device)
 
         initial_hidden_state_tuple = model_wrapper.initial_hidden_state(batch_spectrum_representation) if \
             config.use_lstm else None
@@ -175,7 +170,7 @@ class IonCNNDenovo(object):
 
             # model input
             block_aa_id_input = []
-            block_ion_location = []
+            block_ion_location_param = []
             block_peak_location = []
             block_peak_intensity = []
             block_lstm_h = []
@@ -194,7 +189,7 @@ class IonCNNDenovo(object):
             for entry_index, search_entry in enumerate(active_search_list):
                 feature_index = search_entry.feature_index
                 current_path_list = search_entry.current_path_list
-                precursor_mass = feature_dp_batch[feature_index].original_dda_feature.mass
+                precursor_mass = batch_denovo_data.original_dda_feature_list[feature_index].mass
                 peak_mass_tolerance = start_point_batch[feature_index].mass_tolerance
 
                 for path in current_path_list:
@@ -220,18 +215,19 @@ class IonCNNDenovo(object):
                                                      score=path.score_sum / len(seq))
                             )
                         continue
-
-                    ion_location = get_ion_index(precursor_mass, aa_seq_mass, direction_cint_map[direction])  # [26,8]
+                    if not block_ion_location_param:
+                        block_ion_location_param = [[precursor_mass], [aa_seq_mass], direction_cint_map[direction]]
+                    else:
+                        block_ion_location_param[0].append(precursor_mass)
+                        block_ion_location_param[1].append(aa_seq_mass)
 
                     residual_mass = precursor_mass - aa_seq_mass - config.mass_ID[last_label]
                     knapsack_tolerance = int(round(peak_mass_tolerance * config.KNAPSACK_AA_RESOLUTION))
                     knapsack_candidates = self.knapsack_searcher.search_knapsack(residual_mass, knapsack_tolerance)
-
                     if not knapsack_candidates:
                         # if not possible aa, force it to stop.
                         knapsack_candidates.append(last_label)
 
-                    block_ion_location.append(ion_location)
                     block_aa_id_input.append(aa_id)
                     # get hidden state block
                     block_peak_location.append(original_spectrum_tuple[0])
@@ -251,12 +247,11 @@ class IonCNNDenovo(object):
             # step 3 run model on data blocks to predict next AA.
             #     output is stored in current_log_prob
             # assert block_aa_id_list, 'IonCNNDenovo._beam_search(): aa_id_list is empty.'
-            if not block_ion_location:
+            if not block_ion_location_param:
                 # all search entry finished in the previous step
                 break
 
-            block_ion_location = torch.from_numpy(np.array(block_ion_location)).to(device)  # [batch, 26, 8, 10]
-            block_ion_location = torch.unsqueeze(block_ion_location, dim=1)  # [batch, 1, 26, 8]
+            block_ion_location = torch_get_ion_index(*block_ion_location_param)
             block_peak_location = torch.stack(block_peak_location, dim=0).contiguous()
             block_peak_intensity = torch.stack(block_peak_intensity, dim=0).contiguous()
             if config.use_lstm:
@@ -276,7 +271,7 @@ class IonCNNDenovo(object):
                                                                    block_state_tuple,
                                                                    direction)
             # transfer log_prob back to cpu
-            current_log_prob = current_log_prob.cpu().numpy()
+            current_log_prob = current_log_prob.cpu().numpy()  # [block_size, num_tokens]
 
             # STEP 4: retrieve data from blocks to update the active_search_list
             #     with knapsack dynamic programming and beam search.
@@ -324,36 +319,36 @@ class IonCNNDenovo(object):
         return top_path_batch
 
     @staticmethod
-    def _get_start_point(feature_dp_batch: list) -> tuple:
+    def _get_start_point(batch_denovo_data: BatchDenovoData) -> tuple:
         mass_GO = config.mass_ID[config.GO_ID]
         forward_start_point_lists = [BeamSearchStartPoint(prefix_mass=mass_GO,
-                                                          suffix_mass=feature_dp.original_dda_feature.mass - mass_GO,
+                                                          suffix_mass=dda_feature.mass - mass_GO,
                                                           mass_tolerance=config.PRECURSOR_MASS_PRECISION_TOLERANCE,
                                                           direction=Direction.forward)
-                                     for feature_dp in feature_dp_batch]
+                                     for dda_feature in batch_denovo_data.original_dda_feature_list]
 
         mass_EOS = config.mass_ID[config.EOS_ID]
-        backward_start_point_lists = [BeamSearchStartPoint(prefix_mass=feature_dp.original_dda_feature.mass - mass_EOS,
+        backward_start_point_lists = [BeamSearchStartPoint(prefix_mass=dda_feature.mass - mass_EOS,
                                                            suffix_mass=mass_EOS,
                                                            mass_tolerance=config.PRECURSOR_MASS_PRECISION_TOLERANCE,
                                                            direction=Direction.backward)
-                                      for feature_dp in feature_dp_batch]
+                                      for dda_feature in batch_denovo_data.original_dda_feature_list]
         return forward_start_point_lists, backward_start_point_lists
 
     @staticmethod
-    def _select_path(feature_dp_batch: list, top_candidate_batch: list) -> list:
+    def _select_path(batch_denovo_data: BatchDenovoData, top_candidate_batch: list) -> list:
         """
         for each feature, select the best denovo sequence given by DeepNovo model
-        :param feature_dp_batch: list of DenovoData
+        :param batch_denovo_data:
         :param top_candidate_batch: defined in _search_denovo_batch
         :return:
         list of DenovoResult
         """
-        feature_batch_size = len(feature_dp_batch)
+        feature_batch_size = len(batch_denovo_data.original_dda_feature_list)
 
         refine_batch = [[] for x in range(feature_batch_size)]
         for feature_index in range(feature_batch_size):
-            precursor_mass = feature_dp_batch[feature_index].original_dda_feature.mass
+            precursor_mass = batch_denovo_data.original_dda_feature_list[feature_index].mass
             candidate_list = top_candidate_batch[feature_index]
             for beam_search_sequence in candidate_list:
                 sequence = beam_search_sequence.sequence
@@ -362,7 +357,7 @@ class IonCNNDenovo(object):
                     config.EOS_ID]
                 if abs(sequence_mass - precursor_mass) <= config.PRECURSOR_MASS_PRECISION_TOLERANCE:
                     logger.debug(f"sequence {sequence} of feature "
-                                 f"{feature_dp_batch[feature_index].original_dda_feature.feature_id} refined")
+                                 f"{batch_denovo_data.original_dda_feature_list[feature_index].feature_id} refined")
                     refine_batch[feature_index].append(beam_search_sequence)
         predicted_batch = []
         for feature_index in range(feature_batch_size):
@@ -378,38 +373,36 @@ class IonCNNDenovo(object):
                 best_beam_search_sequence = max(candidate_list, key=lambda x: x.score)
 
             denovo_result = DenovoResult(
-                dda_feature=feature_dp_batch[feature_index].original_dda_feature,
+                dda_feature=batch_denovo_data.original_dda_feature_list[feature_index],
                 best_beam_search_sequence=best_beam_search_sequence
             )
             predicted_batch.append(denovo_result)
         return predicted_batch
 
-    def _search_denovo_batch(self, feature_dp_batch: list, model_wrapper: InferenceModelWrapper) -> list:
+    def _search_denovo_batch(self, batch_denovo_data: BatchDenovoData, model_wrapper: InferenceModelWrapper) -> list:
         start_time = time.time()
-        feature_batch_size = len(feature_dp_batch)
-        start_points_tuple = self._get_start_point(feature_dp_batch)
+        feature_batch_size = len(batch_denovo_data.original_dda_feature_list)
+        start_points_tuple = self._get_start_point(batch_denovo_data)
         top_candidate_batch = [[] for x in range(feature_batch_size)]
 
         for start_points in start_points_tuple:
-            beam_search_result_batch = self._beam_search(model_wrapper, feature_dp_batch, start_points)
+            beam_search_result_batch = self._beam_search(model_wrapper, batch_denovo_data, start_points)
             for feature_index in range(feature_batch_size):
                 top_candidate_batch[feature_index].extend(beam_search_result_batch[feature_index])
-        predicted_batch = self._select_path(feature_dp_batch, top_candidate_batch)
+        predicted_batch = self._select_path(batch_denovo_data, top_candidate_batch)
         test_time = time.time() - start_time
         logger.info("beam_search(): batch time {}s".format(test_time))
         return predicted_batch
 
     def search_denovo(self, model_wrapper: InferenceModelWrapper,
-                      beam_search_reader: DeepNovoDenovoDataset, denovo_writer: DenovoWriter) -> List[DenovoResult]:
+                      beam_search_reader: torch.utils.data.DataLoader,
+                      denovo_writer: DenovoWriter) -> List[DenovoResult]:
         logger.info("start beam search denovo")
         predicted_denovo_list = []
-
-        test_set_iter = chunks(list(range(len(beam_search_reader))), n=config.batch_size)
-        total_batch_num = int(len(beam_search_reader) / config.batch_size)
-        for index, feature_batch_index in enumerate(test_set_iter):
-            feature_dp_batch = [beam_search_reader[i] for i in feature_batch_index]
+        total_batch_num = int(len(beam_search_reader.dataset) / config.batch_size)
+        for index, batch_denovo_data in enumerate(beam_search_reader):
             logger.info("Read {}th/{} batches".format(index, total_batch_num))
-            predicted_batch = self._search_denovo_batch(feature_dp_batch, model_wrapper)
+            predicted_batch = self._search_denovo_batch(batch_denovo_data, model_wrapper)
             predicted_denovo_list += predicted_batch
             for denovo_result in predicted_batch:
                 denovo_writer.write(denovo_result.dda_feature, denovo_result.best_beam_search_sequence)

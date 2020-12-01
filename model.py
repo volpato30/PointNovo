@@ -1,10 +1,9 @@
 import torch
 import torch.nn as nn
-import numpy as np
+from typing import List
 import torch.nn.functional as F
 from config import config
 from enum import Enum
-
 
 activation_func = F.relu
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -50,14 +49,15 @@ class TNet(nn.Module):
     """
     the T-net structure in the Point Net paper
     """
+
     def __init__(self, with_lstm=False):
         super(TNet, self).__init__()
         self.with_lstm = with_lstm
         self.conv1 = nn.Conv1d(config.vocab_size * config.num_ion + 1, num_units, 1)
-        self.conv2 = nn.Conv1d(num_units, 2*num_units, 1)
-        self.conv3 = nn.Conv1d(2*num_units, 4*num_units, 1)
-        self.fc1 = nn.Linear(4*num_units, 2*num_units)
-        self.fc2 = nn.Linear(2*num_units, num_units)
+        self.conv2 = nn.Conv1d(num_units, 2 * num_units, 1)
+        self.conv3 = nn.Conv1d(2 * num_units, 4 * num_units, 1)
+        self.fc1 = nn.Linear(4 * num_units, 2 * num_units)
+        self.fc2 = nn.Linear(2 * num_units, num_units)
         if not with_lstm:
             self.output_layer = nn.Linear(num_units, config.vocab_size)
         self.relu = nn.ReLU()
@@ -65,9 +65,9 @@ class TNet(nn.Module):
         self.input_batch_norm = nn.BatchNorm1d(config.vocab_size * config.num_ion + 1)
 
         self.bn1 = nn.BatchNorm1d(num_units)
-        self.bn2 = nn.BatchNorm1d(2*num_units)
-        self.bn3 = nn.BatchNorm1d(4*num_units)
-        self.bn4 = nn.BatchNorm1d(2*num_units)
+        self.bn2 = nn.BatchNorm1d(2 * num_units)
+        self.bn3 = nn.BatchNorm1d(4 * num_units)
+        self.bn4 = nn.BatchNorm1d(2 * num_units)
         self.bn5 = nn.BatchNorm1d(num_units)
 
     def forward(self, x):
@@ -94,20 +94,19 @@ class DeepNovoPointNet(nn.Module):
     def __init__(self):
         super(DeepNovoPointNet, self).__init__()
         self.t_net = TNet(with_lstm=False)
-        self.distance_scale_factor = config.distance_scale_factor
+        self.distance_scale_factor = nn.Parameter(torch.tensor(0).float(), requires_grad=True)
 
     def forward(self, location_index, peaks_location, peaks_intensity):
         """
 
-        :param location_index: [batch, T, 26, 8] long
-        :param peaks_location: [batch, N] N stands for MAX_NUM_PEAK, long
+        :param location_index: [batch, T, 26, 8] float
+        :param peaks_location: [batch, N] N stands for MAX_NUM_PEAK, float
         :param peaks_intensity: [batch, N], float32
         :return:
             logits: [batch, T, 26]
         """
 
         N = peaks_location.size(1)
-        # assert N == peaks_intensity.size(1), f"location dim 1 of size: {N} but intensity dim 1 of size {peaks_intensity.size(1)}"
         batch_size, T, vocab_size, num_ion = location_index.size()
 
         peaks_location = peaks_location.view(batch_size, 1, N, 1)
@@ -116,12 +115,14 @@ class DeepNovoPointNet(nn.Module):
         peaks_location_mask = (peaks_location > 1e-5).float()
         peaks_intensity = peaks_intensity.expand(-1, T, -1, -1)  # [batch, T, N, 1]
 
-        location_index = location_index.view(batch_size, T, 1, vocab_size*num_ion)
+        location_index = location_index.view(batch_size, T, 1, vocab_size * num_ion)
         location_index_mask = (location_index > 1e-5).float()
+
+        ppm_diff = (peaks_location - location_index) / (location_index + 1e-6) * 1e6
 
         location_exp_minus_abs_diff = torch.exp(
             -torch.abs(
-                (peaks_location - location_index) * self.distance_scale_factor
+                ppm_diff / 5 * torch.sigmoid(self.distance_scale_factor)
             )
         )
         # [batch, T, N, 26*8]
@@ -129,7 +130,7 @@ class DeepNovoPointNet(nn.Module):
         location_exp_minus_abs_diff = location_exp_minus_abs_diff * peaks_location_mask * location_index_mask
 
         input_feature = torch.cat((location_exp_minus_abs_diff, peaks_intensity), dim=3)
-        input_feature = input_feature.view(batch_size*T, N, vocab_size*num_ion + 1)
+        input_feature = input_feature.view(batch_size * T, N, vocab_size * num_ion + 1)
         input_feature = input_feature.transpose(1, 2)
 
         result = self.t_net(input_feature).view(batch_size, T, vocab_size)
@@ -174,8 +175,8 @@ class DeepNovoPointNetWithLSTM(nn.Module):
         self.dropout = nn.Dropout(config.dropout_rate)
         self.output_layer = nn.Linear(config.num_units + config.lstm_hidden_units,
                                       config.vocab_size)
+        self.distance_scale_factor = nn.Parameter(torch.tensor(0).float(), requires_grad=True)
 
-        self.distance_scale_factor = config.distance_scale_factor
 
     def forward(self, location_index, peaks_location, peaks_intensity, aa_input, state_tuple):
         """
@@ -201,9 +202,11 @@ class DeepNovoPointNetWithLSTM(nn.Module):
         location_index = location_index.view(batch_size, T, 1, vocab_size * num_ion)
         location_index_mask = (location_index > 1e-5).float()
 
+        ppm_diff = (peaks_location - location_index) / (location_index + 1e-6) * 1e6
+
         location_exp_minus_abs_diff = torch.exp(
             -torch.abs(
-                (peaks_location - location_index) * self.distance_scale_factor
+                ppm_diff / 5 * torch.sigmoid(self.distance_scale_factor)
             )
         )
         # [batch, T, N, 26*8]
@@ -243,7 +246,8 @@ class InferenceModelWrapper(object):
     a wrapper class so that the beam search part of code is the same for both with lstm and without lstm model.
     TODO(Rui): support no lstm branch here
     """
-    def __init__(self, forward_model: DeepNovoModel, backward_model: DeepNovoModel, init_net: InitNet=None):
+
+    def __init__(self, forward_model: DeepNovoModel, backward_model: DeepNovoModel, init_net: InitNet = None):
         self.forward_model = forward_model
         self.backward_model = backward_model
         # make sure all models are in eval mode
@@ -281,7 +285,7 @@ class InferenceModelWrapper(object):
                 new_state_tuple = None
             logit = torch.squeeze(logit, dim=1)
             log_prob = F.log_softmax(logit)
-            #log_prob = F.logsigmoid(logit)
+            # log_prob = F.logsigmoid(logit)
         return log_prob, new_state_tuple
 
     def initial_hidden_state(self, spectrum_representation):
@@ -296,3 +300,75 @@ class InferenceModelWrapper(object):
             return h_0.to(device), c_0.to(device)
 
 
+# _get_ion_index_device = torch.device("cpu")
+_get_ion_index_device = device
+mass_ID_torch = torch.from_numpy(config.mass_ID_np).to(_get_ion_index_device).unsqueeze(0)
+mass_CO = config.mass_CO
+mass_H2O = config.mass_H2O
+mass_NH3 = config.mass_NH3
+mass_H = config.mass_H
+MZ_MAX = config.MZ_MAX
+
+
+def torch_get_ion_index(peptide_mass: List[float], prefix_mass: List[float], direction):
+    """
+
+    :param peptide_mass: neutral mass of a peptide
+    :param prefix_mass:
+    :param direction: 0 for forward, 1 for backward
+    :return: an int32 ndarray of shape [26, 8], each element represent a index of the spectrum embbeding matrix. for out
+    of bound position, the index is 0
+    """
+    peptide_mass = torch.tensor(peptide_mass, dtype=torch.float32, device=_get_ion_index_device).unsqueeze(1)  # batch
+    prefix_mass = torch.tensor(prefix_mass, dtype=torch.float32, device=_get_ion_index_device).unsqueeze(1)  # batch
+    with torch.no_grad():
+        if direction == 0:
+            candidate_b_mass = prefix_mass + mass_ID_torch  # [batch, 26]
+            candidate_y_mass = peptide_mass - candidate_b_mass
+        else:
+            candidate_y_mass = prefix_mass + mass_ID_torch
+            candidate_b_mass = peptide_mass - candidate_y_mass
+        candidate_a_mass = candidate_b_mass - mass_CO
+
+        # b-ions
+        candidate_b_H2O = candidate_b_mass - mass_H2O
+        candidate_b_NH3 = candidate_b_mass - mass_NH3
+        candidate_b_plus2_charge1 = ((candidate_b_mass + 2 * mass_H) / 2
+                                     - mass_H)
+
+        # a-ions
+        candidate_a_H2O = candidate_a_mass - mass_H2O
+        candidate_a_NH3 = candidate_a_mass - mass_NH3
+        candidate_a_plus2_charge1 = ((candidate_a_mass + 2 * mass_H) / 2
+                                     - mass_H)
+
+        # y-ions
+        candidate_y_H2O = candidate_y_mass - mass_H2O
+        candidate_y_NH3 = candidate_y_mass - mass_NH3
+        candidate_y_plus2_charge1 = ((candidate_y_mass + 2 * mass_H) / 2
+                                     - mass_H)
+
+        # ion_2
+        # ~   b_ions = [candidate_b_mass]
+        # ~   y_ions = [candidate_y_mass]
+        # ~   ion_mass_list = b_ions + y_ions
+
+        ion_mass_list = [candidate_b_mass,
+                         candidate_b_H2O,
+                         candidate_b_NH3,
+                         candidate_b_plus2_charge1,
+                         candidate_y_mass,
+                         candidate_y_H2O,
+                         candidate_y_NH3,
+                         candidate_y_plus2_charge1,
+                         candidate_a_mass,
+                         candidate_a_H2O,
+                         candidate_a_NH3,
+                         candidate_a_plus2_charge1]
+        ion_mass = torch.stack(ion_mass_list, dim=2)  # [batch, 26, 12]
+
+        in_bound_mask = torch.logical_and(
+            ion_mass > 0,
+            ion_mass <= MZ_MAX).float()
+        ion_location = ion_mass * in_bound_mask  # [batch, 26, 12], out of bound index would have value 0
+    return ion_location.unsqueeze(1).contiguous()  # [batch, 1, 26, 12]

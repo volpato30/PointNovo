@@ -134,8 +134,6 @@ logger.info("num_ion ", constant_params_obj.num_ion)
 # ==============================================================================
 logger.info("weight_decay ", constant_params_obj.weight_decay)
 python_obj_dict["n_position"] = int(constant_params_obj.MZ_MAX) * constant_params_obj.spectrum_reso
-
-# ==============================================================================
 # DATASETS
 # ==============================================================================
 

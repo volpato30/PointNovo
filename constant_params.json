@@ -44,7 +44,7 @@
     "Y(Phosphorylation)": 243.02966,
     "V": 99.06841
   },
-  "MZ_MAX": 5000.0,
+  "MZ_MAX": 8000.0,
   "KNAPSACK_AA_RESOLUTION": 10000,
   "KNAPSACK_MASS_PRECISION_TOLERANCE": 100,
   "PRECURSOR_MASS_PRECISION_TOLERANCE": 0.01,
@@ -52,7 +52,7 @@
   "weight_decay": 0.0,
   "embedding_size": 512,
   "num_lstm_layers": 1,
-  "num_units": 128,
+  "num_units": 32,
   "lstm_hidden_units": 512,
   "dropout_rate": 0.25,
   "distance_scale_factor": 100,

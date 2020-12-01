@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 from db_searcher import DataBaseSearcher
 import time
 import numpy as np
+from typing import List
 import pickle
 import csv
 import re
@@ -81,12 +82,21 @@ class DDAFeature:
     mass: float
     feature_area: str
 
+
 @dataclass
-class DenovoData:
+class _DenovoData:
     peak_location: np.ndarray
     peak_intensity: np.ndarray
     spectrum_representation: np.ndarray
     original_dda_feature: DDAFeature
+
+
+@dataclass
+class BatchDenovoData:
+    peak_location: torch.Tensor
+    peak_intensity: torch.Tensor
+    spectrum_representation: torch.Tensor
+    original_dda_feature_list: List[DDAFeature]
 
 
 @dataclass
@@ -365,7 +375,7 @@ def chunks(l, n: int):
 
 class DeepNovoDenovoDataset(DeepNovoTrainDataset):
     # override _get_feature method
-    def _get_feature(self, feature: DDAFeature) -> DenovoData:
+    def _get_feature(self, feature: DDAFeature) -> _DenovoData:
         spectrum_location = self.spectrum_location_dict[feature.scan]
         self.input_spectrum_handle.seek(spectrum_location)
         # parse header lines
@@ -384,10 +394,25 @@ class DeepNovoDenovoDataset(DeepNovoTrainDataset):
         mz_list, intensity_list = self._parse_spectrum_ion()
         peak_location, peak_intensity, spectrum_representation = process_peaks(mz_list, intensity_list, feature.mass)
 
-        return DenovoData(peak_location=peak_location,
-                          peak_intensity=peak_intensity,
-                          spectrum_representation=spectrum_representation,
-                          original_dda_feature=feature)
+        return _DenovoData(peak_location=peak_location,
+                           peak_intensity=peak_intensity,
+                           spectrum_representation=spectrum_representation,
+                           original_dda_feature=feature)
+
+
+def denovo_collate_func(data_list: List[_DenovoData]):
+    batch_peak_location = np.array([x.peak_location for x in data_list])
+    batch_peak_intensity = np.array([x.peak_intensity for x in data_list])
+    batch_spectrum_representation = np.array([x.spectrum_representation for x in data_list])
+
+    batch_peak_location = torch.from_numpy(batch_peak_location)
+    batch_peak_intensity = torch.from_numpy(batch_peak_intensity)
+    batch_spectrum_representation = torch.from_numpy(batch_spectrum_representation)
+
+    original_dda_feature_list = [x.original_dda_feature for x in data_list]
+
+    return BatchDenovoData(batch_peak_location, batch_peak_intensity, batch_spectrum_representation,
+                           original_dda_feature_list)
 
 
 @dataclass
